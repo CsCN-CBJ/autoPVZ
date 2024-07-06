@@ -1,14 +1,14 @@
 import typing
 
 import cv2
-from cbjLibrary.utils.window import *
+from cbjLibrary.window import *
 import numpy as np
 import pyautogui
 from typing import Optional
 
 FIRST_CARD_OFFSET = Point(79, 7)  # 第一张卡片的左上角
 # FIRST_CARD_OFFSET = Point(89, 7)  # 第一张卡片的左上角
-CARD_SIZE = Point(50, 70)
+CARD_SIZE = Point(55, 70)
 
 FIRST_GRASS_OFFSET = Point(80, 130)  # 第一个草皮的中间位置
 GRASS_SIZE = Point(80, 100)
