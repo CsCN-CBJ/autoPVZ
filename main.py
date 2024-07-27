@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 import cbjLibrary.log as log
 import cbjLibrary.window as window
 import screen
@@ -6,25 +7,15 @@ import pyautogui
 from CONFIG import *
 
 logger = log.initLogger(loggerName="pvz")
+cardList: list[str]
 
 
 def chooseAndStart(sc: screen.PvzScreen):
     pyautogui.moveTo(*sc.baseLocate)  # 防止鼠标放到卡片上, 影响识别
     # 选植物
     image = sc.Shot()
-    cards = [
-        PLANT_SUNFLOWER,
-        PLANT_REPEATER,
-        PLANT_PUMPKIN,
-        PLANT_SPIKE_WEED,
-        PLANT_TORCH_WOOD,
-        PLANT_TALL_NUT,
-        PLANT_POTATO_MINE,
-        PLANT_SQUASH,
-    ]
-
-    for card in cards:
-        lo = screen.locateCenter(f"./data/{card}", image, confidence=0.95)
+    for card in cardList:
+        lo = screen.locateCenter(f"./data/{card}.jpg", image, confidence=0.95)
         pyautogui.leftClick(*(sc.baseLocate + lo))
     # 点击开始
     lo = pyautogui.locateCenterOnScreen("./data/start.jpg", confidence=0.7)
@@ -41,7 +32,6 @@ def growthStage(sc: screen.PvzScreen):
         plant = -1  # 当前TICK需要种植的植物, 确保每一个TICK只能种一个植物, 防止重复种植导致阳光不够
         plantRow, plantCol = -1, -1
         time.sleep(TICK)
-        tCnt += 1
 
         # 检查鼠标位置, 方便随时退出, 杜绝鼠标被完全控制的安全隐患
         if not sc.mouseInScreen():
@@ -53,11 +43,14 @@ def growthStage(sc: screen.PvzScreen):
         # 捡阳光
         points = screen.locateAllCenter("./data/sun.jpg", image)
         for p in points:
+            # 防止误点卡槽部位的阳光
             if p.y < screen.FIRST_GRASS_OFFSET.y - screen.GRASS_SIZE.y // 2:
                 continue
             logger.debug("click sun")
             pyautogui.leftClick(*(sc.baseLocate + p))
 
+        # 只有在COMMON_TICKS的时候才会种植物, 其他时间捡阳光
+        tCnt += 1
         if tCnt != COMMON_TICKS:
             continue
         tCnt = 0
@@ -67,7 +60,7 @@ def growthStage(sc: screen.PvzScreen):
         zombieCnt = [0, 0, 0, 0, 0]
         for p in points:
             row = sc.zombieRow(p.y)
-            logger.info(str(row) + str(p))
+            logger.info(f"Zombie in row: {row} {p}")
             zombieCnt[row] += 1
 
         # 判断是否需要种植植物
@@ -76,21 +69,19 @@ def growthStage(sc: screen.PvzScreen):
                 continue
             if sunFlowerCnt < 10:
                 # 种植土豆雷和窝瓜
-                for i in [CARD_POTATO_MINE, CARD_SQUASH]:
+                for card in [CARD_POTATO_MINE, CARD_SQUASH]:
                     # 优先种第四列, 如果两个僵尸则种第三列
                     col = 2 if plants[0] == 1 else 3
-                    if sc.cardAvailable(image, i):
+                    if sc.cardAvailable(image, card):
                         # 种植土豆雷/窝瓜
-                        plant, plantRow, plantCol = i, row, col
+                        plant, plantRow, plantCol = card, row, col
                         plants[row] += 1
-                        logger.info(f"种土豆雷/窝瓜 row={row}, col={col}")
                         break
 
         # 种向日葵
         if plant == -1 and sunFlowerCnt < 10 and sc.cardAvailable(image, CARD_SUNFLOWER):
             plant = CARD_SUNFLOWER
             plantCol, plantRow = divmod(sunFlowerCnt, 5)
-            logger.info(f"plant a sunflower row={plantRow}, col={plantCol}")
             sunFlowerCnt += 1
             if sunFlowerCnt == 10:
                 plants = zombieCnt
@@ -110,11 +101,11 @@ def growthStage(sc: screen.PvzScreen):
                         break
                 else:
                     plantRow = doubleShot.index(0)
-            logger.info(f"plant a sunflower row={plantRow}, col={plantCol}")
             doubleShot[plantRow] = 1
 
         # 种植植物
         if plant != -1:
+            logger.info(f"plant a {plant} row={plantRow}, col={plantCol}")
             pyautogui.leftClick(*(sc.baseLocate + sc.getCardCenter(plant)))
             pyautogui.leftClick(*(sc.baseLocate + sc.getGrass(plantRow, plantCol)))
 
@@ -123,10 +114,10 @@ def growthStage(sc: screen.PvzScreen):
 
 
 def plantStage(sc: screen.PvzScreen):
-    plantCount = [0 for _ in range(10)]
-    plantMax = [5 for _ in range(10)]
+    plantCount = defaultdict(int)  # 植物计数器
+    plantMax = defaultdict(lambda: 5)  # 植物最大数量
     plantMax[CARD_REPEATER] = 15  # 双发
-    plantStart = {
+    plantStartCol = {
         CARD_TALL_NUT: 7,
         CARD_SPIKE_WEED: 8,
         CARD_TORCH_WOOD: 6,
@@ -162,16 +153,16 @@ def plantStage(sc: screen.PvzScreen):
         # 高坚果, 地刺, 火炬, 豌豆, 南瓜
         # TODO: 种植高坚果之后可以减少南瓜的种植, 尽快种植火炬
         # TODO: 实现阳光等待逻辑, 确保真正的植物优先级, 这里的种植顺序会受到植物本身所需阳光的影响
-        for index in [CARD_TALL_NUT, CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_REPEATER, CARD_PUMPKIN]:
-            cnt = plantCount[index]
-            if cnt < plantMax[index] and sc.cardAvailable(image, index):
-                plant = index
+        for card in [CARD_TALL_NUT, CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_REPEATER, CARD_PUMPKIN]:
+            cnt = plantCount[card]
+            if cnt < plantMax[card] and sc.cardAvailable(image, card):
+                plant = card
                 plantCol, plantRow = divmod(cnt, 5)
-                if index == CARD_TALL_NUT:
+                if card == CARD_TALL_NUT:
                     plantRow = 4 - plantRow
-                plantCol += plantStart[index]
-                plantCount[index] += 1
-                logger.info(f"plant a plant row={plantRow}, col={plantCol}")
+                plantCol += plantStartCol[card]
+                plantCount[card] += 1
+                logger.info(f"plant a {card} row={plantRow}, col={plantCol}")
                 break
 
         # 种植植物
@@ -235,6 +226,10 @@ def easyDay():
     """
     left, top, width, height = window.getWindowRect("MainWindow", "植物大战僵尸中文版")
     sc = screen.PvzScreen(left, top, width, height)
+    global cardList
+    cardList = [CARD_SUNFLOWER, CARD_REPEATER, CARD_PUMPKIN, CARD_SPIKE_WEED,
+                CARD_TORCH_WOOD, CARD_TALL_NUT, CARD_POTATO_MINE, CARD_SQUASH]
+    sc.cardList = cardList
     # beat(sc)
     chooseAndStart(sc)
     time.sleep(2)  # 防止识别到外面的僵尸
