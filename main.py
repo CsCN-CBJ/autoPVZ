@@ -1,13 +1,61 @@
 import time
 from collections import defaultdict
-import cbjLibrary.log as log
-import cbjLibrary.window as window
+import log
+import window
 import screen
 import pyautogui
 from CONFIG import *
 
 logger = log.initLogger(loggerName="pvz")
 cardList: list[str]
+
+
+def tickPrepare(sc: screen.PvzScreen):
+    """
+    每个TICK的准备工作, 包括检查鼠标位置和捡阳光
+    :return: 窗口截图
+    """
+    time.sleep(TICK)
+
+    # 检查鼠标位置, 方便随时退出, 杜绝鼠标被完全控制的安全隐患
+    if not sc.mouseInScreen():
+        logger.error("mouse out of pvz, exit")
+        exit(0)
+
+    image = sc.Shot()
+    return image
+
+
+def clickSuns(sc: screen.PvzScreen, image):
+    """
+    捡阳光
+    :param sc: PvzScreen
+    :param image: 窗口截图
+    :return: None
+    """
+    points = screen.locateAllCenter("./data/sun.jpg", image)
+    for p in points:
+        # 防止误点卡槽部位的阳光
+        if p.y < screen.FIRST_GRASS_OFFSET.y - screen.GRASS_SIZE.y // 2:
+            continue
+        logger.debug("click sun")
+        pyautogui.leftClick(*(sc.baseLocate + p))
+
+
+def checkFlagEnd(sc: screen.PvzScreen, image):
+    """
+    检查是否有flag结束
+    :param sc: PvzScreen
+    :param image: 窗口截图
+    :return: None
+    """
+    if screen.locateCenter("./data/end.jpg", image) is not None:
+        logger.error("a flag has ended")
+        time.sleep(10)
+        chooseAndStart(sc)
+        time.sleep(5)
+        return True
+    return False
 
 
 def chooseAndStart(sc: screen.PvzScreen):
@@ -26,36 +74,16 @@ def chooseAndStart(sc: screen.PvzScreen):
 def growthStage(sc: screen.PvzScreen):
     sunFlowerCnt = 0  # 阳光花计数器, 到10结束当前阶段
     doubleShot = [0 for _ in range(5)]  # 双发射手数量
-    tCnt = 0  # tick计时器, 用于不同间隔执行一些操作
     plants = [0, 0, 0, 0, 0]  # 每一行的植物数量
     while True:
         plant = -1  # 当前TICK需要种植的植物, 确保每一个TICK只能种一个植物, 防止重复种植导致阳光不够
         plantRow, plantCol = -1, -1
-        time.sleep(TICK)
 
-        # 检查鼠标位置, 方便随时退出, 杜绝鼠标被完全控制的安全隐患
-        if not sc.mouseInScreen():
-            logger.error("mouse out of pvz, exit")
-            exit(0)
+        image = tickPrepare(sc)
+        clickSuns(sc, image)
 
-        image = sc.Shot()
-
-        # 捡阳光
-        points = screen.locateAllCenter("./data/sun.jpg", image)
-        for p in points:
-            # 防止误点卡槽部位的阳光
-            if p.y < screen.FIRST_GRASS_OFFSET.y - screen.GRASS_SIZE.y // 2:
-                continue
-            logger.debug("click sun")
-            pyautogui.leftClick(*(sc.baseLocate + p))
-
-        # 只有在COMMON_TICKS的时候才会种植物, 其他时间捡阳光
-        tCnt += 1
-        if tCnt != COMMON_TICKS:
-            continue
-        tCnt = 0
-
-        points = screen.locateAllCenter("./data/zb3.jpg", image, confidence=ZOMBIE_CONFIDENCE)
+        # points = screen.locateAllCenter("./data/zb3.jpg", image, confidence=ZOMBIE_CONFIDENCE)
+        points = screen.locateZombies(image, confidence=ZOMBIE_CONFIDENCE)
         # 每行拥有僵尸的数量
         zombieCnt = [0, 0, 0, 0, 0]
         for p in points:
@@ -71,7 +99,8 @@ def growthStage(sc: screen.PvzScreen):
                 # 种植土豆雷和窝瓜
                 for card in [CARD_POTATO_MINE, CARD_SQUASH]:
                     # 优先种第四列, 如果两个僵尸则种第三列
-                    col = 2 if plants[0] == 1 else 3
+                    # col = 2 if plants[0] == 1 else 3
+                    col = 3
                     if sc.cardAvailable(image, card):
                         # 种植土豆雷/窝瓜
                         plant, plantRow, plantCol = card, row, col
@@ -84,6 +113,7 @@ def growthStage(sc: screen.PvzScreen):
             plantCol, plantRow = divmod(sunFlowerCnt, 5)
             sunFlowerCnt += 1
             if sunFlowerCnt == 10:
+                # 清空植物数量, 进入种植豌豆的阶段, 设置为僵尸数量是默认了前一个阶段处理了所有的僵尸, 防止土豆雷不炸
                 plants = zombieCnt
 
         # 种双发射手
@@ -127,28 +157,11 @@ def plantStage(sc: screen.PvzScreen):
     while True:
         plant = -1  # 当前TICK需要种植的植物, 确保每一个TICK只能种一个植物, 防止重复种植导致阳光不够
         plantRow, plantCol = -1, -1
-        time.sleep(TICK)
 
-        # 检查鼠标位置, 方便随时退出, 杜绝鼠标被完全控制的安全隐患
-        if not sc.mouseInScreen():
-            logger.error("mouse out of pvz, exit")
-            exit(0)
-
-        image = sc.Shot()
-        if screen.locateCenter("./data/end.jpg", image) is not None:
-            logger.error("a flag has ended")
-            time.sleep(10)
-            chooseAndStart(sc)
-            time.sleep(5)
+        image = tickPrepare(sc)
+        if checkFlagEnd(sc, image):
             continue
-
-        # 捡阳光
-        points = screen.locateAllCenter("./data/sun.jpg", image)
-        for p in points:
-            if p.y < screen.FIRST_GRASS_OFFSET.y - screen.GRASS_SIZE.y // 2:
-                continue
-            logger.debug("click sun")
-            pyautogui.leftClick(*(sc.baseLocate + p))
+        clickSuns(sc, image)
 
         # 高坚果, 地刺, 火炬, 豌豆, 南瓜
         # TODO: 种植高坚果之后可以减少南瓜的种植, 尽快种植火炬
@@ -180,28 +193,10 @@ def waitStage(sc: screen.PvzScreen):
     种完植物的等待
     """
     while True:
-        time.sleep(TICK)
-
-        # 检查鼠标位置, 方便随时退出, 杜绝鼠标被完全控制的安全隐患
-        if not sc.mouseInScreen():
-            logger.error("mouse out of pvz, exit")
-            exit(0)
-
-        image = sc.Shot()
-        if screen.locateCenter("./data/end.jpg", image) is not None:
-            logger.error("a flag has ended")
-            time.sleep(10)
-            chooseAndStart(sc)
-            time.sleep(5)
+        image = tickPrepare(sc)
+        if checkFlagEnd(sc, image):
             continue
-
-        # 捡阳光
-        points = screen.locateAllCenter("./data/sun.jpg", image)
-        for p in points:
-            if p.y < screen.FIRST_GRASS_OFFSET.y - screen.GRASS_SIZE.y // 2:
-                continue
-            logger.debug("click sun")
-            pyautogui.leftClick(*(sc.baseLocate + p))
+        clickSuns(sc, image)
 
 
 def beat(sc: screen.PvzScreen):

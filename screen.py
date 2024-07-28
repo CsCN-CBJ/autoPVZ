@@ -1,6 +1,5 @@
-import typing
-
-import cv2
+from ultralytics import YOLO
+import torch
 from window import *
 import numpy as np
 import pyautogui
@@ -15,6 +14,11 @@ GRASS_SIZE = Point(80, 100)
 
 PVZ_SIZE = Point(800, 600)
 ZOMBIE_HEIGHT = 70
+
+model = YOLO("data/zombies.pt")
+# 将模型移动到可用的设备上
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
 
 
 class PvzScreen(Screen):
@@ -71,7 +75,7 @@ class PvzScreen(Screen):
         return np.mean(cardData) > 100 and pyautogui.locate(f"./data/{cardName}.jpg", cardData, confidence=0.7) is not None
 
     def zombieRow(self, top) -> int:
-        top += ZOMBIE_HEIGHT - FIRST_GRASS_OFFSET.y
+        top -= FIRST_GRASS_OFFSET.y
         return round(top / GRASS_SIZE.y)
 
 
@@ -121,3 +125,26 @@ def locateAllCenter(target, image, confidence=0.7) -> list[Point]:
         now = box
 
     return result
+
+
+def locateZombies(image, confidence=0.8) -> list[Point]:
+    """
+    获取所有僵尸的中心点
+    :param image: 当前pvz图片
+    :param confidence: 识别的置信度
+    :return: List[Point]
+    """
+    # 调整图像大小以便输入模型
+    img_detect = cv2.resize(image, (640, 640))
+
+    # 使用模型进行预测
+    # 注意: YOLOv8的predict方法不需要额外指定imgsz
+    result = model.predict(source=img_detect, conf=confidence, save=False, verbose=False)
+    boxes = result[0].boxes
+
+    ret = []
+    for box in boxes.xyxy:  # 使用xyxy格式来获取边界框
+        x1, y1, x2, y2 = box.tolist()
+        # x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        ret.append(Point((x1 + x2) // 2, (y1 + y2) // 2))
+    return ret
