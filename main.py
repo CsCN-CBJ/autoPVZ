@@ -101,6 +101,7 @@ def growthStage(sc: screen.PvzScreen):
                     # 优先种第四列, 如果两个僵尸则种第三列
                     # col = 2 if plants[0] == 1 else 3
                     col = 3
+                    # BUGS: 这里的窝瓜会一直判定为不可用
                     if sc.cardAvailable(image, card):
                         # 种植土豆雷/窝瓜
                         plant, plantRow, plantCol = card, row, col
@@ -166,7 +167,11 @@ def plantStage(sc: screen.PvzScreen):
         # 高坚果, 地刺, 火炬, 豌豆, 南瓜
         # TODO: 种植高坚果之后可以减少南瓜的种植, 尽快种植火炬
         # TODO: 实现阳光等待逻辑, 确保真正的植物优先级, 这里的种植顺序会受到植物本身所需阳光的影响
-        for card in [CARD_TALL_NUT, CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_REPEATER, CARD_PUMPKIN]:
+        for card in [CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_REPEATER, CARD_PUMPKIN, CARD_TALL_NUT]:
+            # 种防御植物后必须立马种火炬
+            if plantCount[CARD_TALL_NUT] + plantCount[CARD_PUMPKIN] > plantCount[CARD_TORCH_WOOD] \
+                    and card in [CARD_TALL_NUT, CARD_PUMPKIN]:
+                continue
             cnt = plantCount[card]
             if cnt < plantMax[card] and sc.cardAvailable(image, card):
                 plant = card

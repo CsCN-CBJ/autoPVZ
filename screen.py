@@ -57,22 +57,25 @@ class PvzScreen(Screen):
         p.y += row * GRASS_SIZE.y
         return p
 
-    def cardAvailable(self, image, cardName: str) -> bool:
+    def cardAvailable(self, image, card) -> bool:
         """
         检查某张卡片是否可以使用
         只判断了卡片所在方框的灰度, 阳光可能对此有一定影响
         :param image: 当前pvz图片
-        :param cardName: 卡片名称
+        :param card: 卡片名称或序号
         :return: 卡片是否可以使用
         """
-        left, top = self.getCardCorner(self.cardList.index(cardName))
+        if type(card) != int:
+            card = self.cardList.index(card)
+        left, top = self.getCardCorner(card)
         width, height = CARD_SIZE
         cardData = image[top:top + height, left:left + width]
         # TODO: 这里的图片路径不太好
         # 通过灰度判断是否可以使用; 判断图片是否一致, 防止有阳光遮挡导致误判
         # print(np.mean(card), pyautogui.locate(f"./data/{index}.jpg", card, confidence=.7) is not None)
         # cv2.imwrite(f"./data/temp/{index}.jpg", card)
-        return np.mean(cardData) > 100 and pyautogui.locate(f"./data/{cardName}.jpg", cardData, confidence=0.7) is not None
+        cardPath = f"./data/{self.cardList[card]}.jpg"
+        return np.mean(cardData) > 100 and pyautogui.locate(cardPath, cardData, confidence=0.7) is not None
 
     def zombieRow(self, top) -> int:
         top -= FIRST_GRASS_OFFSET.y
