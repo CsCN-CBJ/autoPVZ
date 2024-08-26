@@ -23,6 +23,17 @@ model.to(device)
 
 class PvzScreen(Screen):
     cardList: list[str]
+    cardImgList: list  # GREY images of cards
+
+    def __init__(self, left, top, width, height, cardList: list[str]):
+        super().__init__(left, top, width, height)
+        self.cardList = cardList
+        self.cardImgList = []
+        for name in cardList:
+            img = cv2.imread(f"./data/{name}.jpg")
+            if img is None:
+                raise FileNotFoundError(f"Card {name} not found")
+            self.cardImgList.append(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
 
     def getCardCorner(self, index: int) -> Point:
         """
@@ -65,17 +76,25 @@ class PvzScreen(Screen):
         :param card: 卡片名称或序号
         :return: 卡片是否可以使用
         """
+        # 将卡片名称转换为序号
         if type(card) != int:
             card = self.cardList.index(card)
         left, top = self.getCardCorner(card)
         width, height = CARD_SIZE
         cardData = image[top:top + height, left:left + width]
-        # TODO: 这里的图片路径不太好
-        # 通过灰度判断是否可以使用; 判断图片是否一致, 防止有阳光遮挡导致误判
-        # print(np.mean(card), pyautogui.locate(f"./data/{index}.jpg", card, confidence=.7) is not None)
-        # cv2.imwrite(f"./data/temp/{index}.jpg", card)
-        cardPath = f"./data/{self.cardList[card]}.jpg"
-        return np.mean(cardData) > 100 and pyautogui.locate(cardPath, cardData, confidence=0.7) is not None
+
+        # 通过灰度判断是否可以使用, 并且判断图片是否一致, 防止有阳光遮挡导致误判
+        stdCard = self.cardImgList[card]
+        H1 = cv2.calcHist([stdCard], [0], None, [256], [0, 256])
+        H1 = cv2.normalize(H1, H1, 0, 1, cv2.NORM_MINMAX, -1)  # 对图片进行归一化处理
+
+        cardImg = cv2.cvtColor(cardData, cv2.COLOR_BGR2GRAY)
+        H2 = cv2.calcHist([cardImg], [0], None, [256], [0, 256])
+        H2 = cv2.normalize(H2, H2, 0, 1, cv2.NORM_MINMAX, -1)
+
+        # 利用compareHist（）进行比较相似度
+        similarity = cv2.compareHist(H1, H2, 0)
+        return np.mean(cardData) > 100 and similarity > 0.4
 
     def zombieRow(self, top) -> int:
         top -= FIRST_GRASS_OFFSET.y

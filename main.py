@@ -7,7 +7,6 @@ import pyautogui
 from CONFIG import *
 
 logger = log.initLogger(loggerName="pvz")
-cardList: list[str]
 
 
 def tickPrepare(sc: screen.PvzScreen):
@@ -62,7 +61,7 @@ def chooseAndStart(sc: screen.PvzScreen):
     pyautogui.moveTo(*sc.baseLocate)  # 防止鼠标放到卡片上, 影响识别
     # 选植物
     image = sc.Shot()
-    for card in cardList:
+    for card in sc.cardList:
         lo = screen.locateCenter(f"./data/{card}.jpg", image, confidence=0.95)
         pyautogui.leftClick(*(sc.baseLocate + lo))
     # 点击开始
@@ -167,10 +166,11 @@ def plantStage(sc: screen.PvzScreen):
         # 高坚果, 地刺, 火炬, 豌豆, 南瓜
         # TODO: 种植高坚果之后可以减少南瓜的种植, 尽快种植火炬
         # TODO: 实现阳光等待逻辑, 确保真正的植物优先级, 这里的种植顺序会受到植物本身所需阳光的影响
-        for card in [CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_REPEATER, CARD_PUMPKIN, CARD_TALL_NUT]:
+        for card in [CARD_SPIKE_WEED, CARD_TORCH_WOOD, CARD_PUMPKIN, CARD_TALL_NUT, CARD_REPEATER]:
             # 种防御植物后必须立马种火炬
             if plantCount[CARD_TALL_NUT] + plantCount[CARD_PUMPKIN] > plantCount[CARD_TORCH_WOOD] \
-                    and card in [CARD_TALL_NUT, CARD_PUMPKIN]:
+                    and card in [CARD_TALL_NUT, CARD_PUMPKIN] \
+                    and plantCount[CARD_TORCH_WOOD] < plantMax[CARD_TORCH_WOOD]:
                 continue
             cnt = plantCount[card]
             if cnt < plantMax[card] and sc.cardAvailable(image, card):
@@ -225,11 +225,9 @@ def easyDay():
     白天简单模式
     """
     left, top, width, height = window.getWindowRect("MainWindow", "植物大战僵尸中文版")
-    sc = screen.PvzScreen(left, top, width, height)
-    global cardList
     cardList = [CARD_SUNFLOWER, CARD_REPEATER, CARD_PUMPKIN, CARD_SPIKE_WEED,
                 CARD_TORCH_WOOD, CARD_TALL_NUT, CARD_POTATO_MINE, CARD_SQUASH]
-    sc.cardList = cardList
+    sc = screen.PvzScreen(left, top, width, height, cardList)
     # beat(sc)
     chooseAndStart(sc)
     time.sleep(2)  # 防止识别到外面的僵尸
